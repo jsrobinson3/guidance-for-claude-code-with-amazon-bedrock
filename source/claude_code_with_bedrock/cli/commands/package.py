@@ -16,6 +16,7 @@ from cleo.helpers import option
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Confirm, Prompt
 
 from claude_code_with_bedrock.cli.utils.aws import get_stack_outputs
 from claude_code_with_bedrock.cli.utils.display import display_configuration_info
@@ -295,6 +296,78 @@ class PackageCommand(Command):
             # Single platform specified
             platforms_to_build = [target_platform]
 
+        # macOS Code Signing Setup
+        codesign_identity = None
+        notarize_config = {}
+
+        if platform.system() == "Darwin" and any(p.startswith("macos") for p in platforms_to_build):
+            console.print("\n[bold cyan]macOS Code Signing Setup[/bold cyan]")
+            console.print("[dim]Code signing removes Gatekeeper warnings for enterprise distribution.[/dim]\n")
+
+            # Ask if user wants to sign
+            sign_prompt = Confirm.ask("Do you want to code sign the macOS binaries?", default=True)
+
+            if sign_prompt:
+                # List available signing identities
+                list_result = subprocess.run(
+                    ["security", "find-identity", "-v", "-p", "codesigning"],
+                    capture_output=True,
+                    text=True
+                )
+
+                if list_result.returncode == 0 and list_result.stdout:
+                    console.print("\n[cyan]Available Code Signing Identities:[/cyan]")
+                    console.print(list_result.stdout)
+
+                    # Prompt for identity
+                    identity = Prompt.ask(
+                        "\nEnter signing identity",
+                        default="",
+                        show_default=False
+                    ).strip()
+
+                    if identity:
+                        codesign_identity = identity
+                        console.print(f"[green]✓[/green] Will sign with: {identity}")
+
+                        # Ask about notarization
+                        notarize_prompt = Confirm.ask(
+                            "\nDo you want to notarize the binaries? (Requires Apple ID)",
+                            default=False
+                        )
+
+                        if notarize_prompt:
+                            apple_id = Prompt.ask("Apple ID (email)").strip()
+                            team_id = Prompt.ask("Team ID (e.g., ABCD1234XY)").strip()
+
+                            console.print("\n[dim]App-specific password needed for notarization.[/dim]")
+                            console.print("[dim]Generate one at: https://appleid.apple.com/account/manage[/dim]")
+                            console.print("[dim]Or store in keychain with:[/dim]")
+                            console.print(f"[dim]  xcrun notarytool store-credentials --apple-id {apple_id} --team-id {team_id}[/dim]\n")
+
+                            password_method = Prompt.ask(
+                                "Password method",
+                                choices=["keychain", "prompt"],
+                                default="keychain"
+                            )
+
+                            notarize_config = {
+                                "apple_id": apple_id,
+                                "team_id": team_id,
+                                "password_method": password_method
+                            }
+
+                            if password_method == "prompt":
+                                from getpass import getpass
+                                notarize_config["password"] = getpass("App-specific password: ")
+
+                            console.print("[green]✓[/green] Notarization configured")
+                else:
+                    console.print("[yellow]No code signing identities found[/yellow]")
+                    console.print("[dim]Run 'security find-identity -v -p codesigning' to check available identities[/dim]")
+
+            console.print()
+
         built_executables = []
         built_otel_helpers = []
 
@@ -303,7 +376,9 @@ class PackageCommand(Command):
             # Build credential process
             console.print(f"[cyan]Building credential process for {platform_name}...[/cyan]")
             try:
-                executable_path = self._build_executable(output_dir, platform_name)
+                executable_path = self._build_executable(
+                    output_dir, platform_name, codesign_identity, notarize_config
+                )
                 # Check if this was an async Windows build
                 if executable_path is None:
                     # Windows build started in CodeBuild, continue without local binary
@@ -321,7 +396,9 @@ class PackageCommand(Command):
                 else:
                     console.print(f"[cyan]Building OTEL helper for {platform_name}...[/cyan]")
                     try:
-                        otel_helper_path = self._build_otel_helper(output_dir, platform_name)
+                        otel_helper_path = self._build_otel_helper(
+                            output_dir, platform_name, codesign_identity, notarize_config
+                        )
                         # Only add to list if build was successful (not None)
                         if otel_helper_path is not None:
                             built_otel_helpers.append((platform_name, otel_helper_path))
@@ -470,7 +547,7 @@ class PackageCommand(Command):
             console.print(f"[red]Error checking build status: {e}[/red]")
             return 1
 
-    def _build_executable(self, output_dir: Path, target_platform: str) -> Path:
+    def _build_executable(self, output_dir: Path, target_platform: str, codesign_identity=None, notarize_config=None) -> Path:
         """Build executable for target platform using appropriate tool."""
         import platform
 
@@ -490,11 +567,11 @@ class PackageCommand(Command):
 
         # macOS builds use PyInstaller for cross-architecture support
         if target_platform == "macos-arm64":
-            return self._build_macos_pyinstaller(output_dir, "arm64")
+            return self._build_macos_pyinstaller(output_dir, "arm64", codesign_identity, notarize_config)
         elif target_platform == "macos-intel":
-            return self._build_macos_pyinstaller(output_dir, "x86_64")
+            return self._build_macos_pyinstaller(output_dir, "x86_64", codesign_identity, notarize_config)
         elif target_platform == "macos-universal":
-            return self._build_macos_pyinstaller(output_dir, "universal2")
+            return self._build_macos_pyinstaller(output_dir, "universal2", codesign_identity, notarize_config)
         elif target_platform == "linux-x64":
             # Build Linux x64 binary via Docker with PyInstaller
             return self._build_linux_via_docker(output_dir, "x64")
@@ -507,9 +584,9 @@ class PackageCommand(Command):
         elif target_platform == "macos":
             # Default macOS build for current architecture
             if current_machine == "arm64":
-                return self._build_macos_pyinstaller(output_dir, "arm64")
+                return self._build_macos_pyinstaller(output_dir, "arm64", codesign_identity, notarize_config)
             else:
-                return self._build_macos_pyinstaller(output_dir, "x86_64")
+                return self._build_macos_pyinstaller(output_dir, "x86_64", codesign_identity, notarize_config)
 
         # Fallback - shouldn't reach here
         raise ValueError(f"Unsupported target platform: {target_platform}")
@@ -685,7 +762,7 @@ class PackageCommand(Command):
 
         return output_dir / binary_name
 
-    def _build_macos_pyinstaller(self, output_dir: Path, arch: str) -> Path:
+    def _build_macos_pyinstaller(self, output_dir: Path, arch: str, codesign_identity=None, notarize_config=None) -> Path:
         """Build macOS executable using PyInstaller with target architecture."""
         console = Console()
         verbose = self.option("build-verbose")
@@ -786,6 +863,19 @@ class PackageCommand(Command):
         if binary_path.exists():
             binary_path.chmod(0o755)
             console.print(f"[green]✓ macOS {arch} binary built successfully with PyInstaller[/green]")
+
+            # Code sign the binary if identity provided
+            if codesign_identity:
+                console.print(f"[cyan]Signing binary with: {codesign_identity}[/cyan]")
+                self._codesign_binary(binary_path, codesign_identity)
+                console.print("[green]✓ Binary signed[/green]")
+
+                # Notarize if configured
+                if notarize_config:
+                    console.print("[cyan]Submitting for notarization...[/cyan]")
+                    self._notarize_binary(binary_path, notarize_config)
+                    console.print("[green]✓ Binary notarized and stapled[/green]")
+
             return binary_path
         else:
             raise RuntimeError(f"Binary not created: {binary_path}")
@@ -1383,7 +1473,7 @@ RUN pyinstaller \
 
         return source_zip
 
-    def _build_otel_helper(self, output_dir: Path, target_platform: str) -> Path:
+    def _build_otel_helper(self, output_dir: Path, target_platform: str, codesign_identity=None, notarize_config=None) -> Path:
         """Build executable for OTEL helper script."""
         # Windows uses Nuitka via CodeBuild
         if target_platform == "windows":
@@ -1397,19 +1487,19 @@ RUN pyinstaller \
 
         # macOS builds use PyInstaller
         if target_platform == "macos-arm64":
-            return self._build_otel_helper_pyinstaller(output_dir, "macos", "arm64")
+            return self._build_otel_helper_pyinstaller(output_dir, "macos", "arm64", codesign_identity, notarize_config)
         elif target_platform == "macos-intel":
-            return self._build_otel_helper_pyinstaller(output_dir, "macos", "x86_64")
+            return self._build_otel_helper_pyinstaller(output_dir, "macos", "x86_64", codesign_identity, notarize_config)
         elif target_platform == "macos-universal":
-            return self._build_otel_helper_pyinstaller(output_dir, "macos", "universal2")
+            return self._build_otel_helper_pyinstaller(output_dir, "macos", "universal2", codesign_identity, notarize_config)
         elif target_platform == "macos":
             import platform
 
             current_machine = platform.machine().lower()
             if current_machine == "arm64":
-                return self._build_otel_helper_pyinstaller(output_dir, "macos", "arm64")
+                return self._build_otel_helper_pyinstaller(output_dir, "macos", "arm64", codesign_identity, notarize_config)
             else:
-                return self._build_otel_helper_pyinstaller(output_dir, "macos", "x86_64")
+                return self._build_otel_helper_pyinstaller(output_dir, "macos", "x86_64", codesign_identity, notarize_config)
 
         # Linux builds use PyInstaller via Docker
         elif target_platform == "linux-x64":
@@ -1524,6 +1614,19 @@ RUN pyinstaller \
         if binary_path.exists():
             binary_path.chmod(0o755)
             console.print("[green]✓ OTEL helper built successfully with PyInstaller[/green]")
+
+            # Code sign the binary if identity provided
+            if codesign_identity:
+                console.print(f"[cyan]Signing OTEL helper with: {codesign_identity}[/cyan]")
+                self._codesign_binary(binary_path, codesign_identity)
+                console.print("[green]✓ OTEL helper signed[/green]")
+
+                # Notarize if configured
+                if notarize_config:
+                    console.print("[cyan]Submitting OTEL helper for notarization...[/cyan]")
+                    self._notarize_binary(binary_path, notarize_config)
+                    console.print("[green]✓ OTEL helper notarized and stapled[/green]")
+
             return binary_path
         else:
             raise RuntimeError(f"OTEL helper binary not created: {binary_path}")
@@ -2400,3 +2503,73 @@ Available metrics include:
 
         except Exception as e:
             console.print(f"[yellow]Warning: Could not create Claude Code settings: {e}[/yellow]")
+
+    def _codesign_binary(self, binary_path: Path, identity: str):
+        """Code sign a macOS binary."""
+        import subprocess
+
+        cmd = [
+            "codesign",
+            "--sign", identity,
+            "--force",
+            "--options", "runtime",
+            "--timestamp",
+            str(binary_path)
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Code signing failed: {result.stderr}")
+
+    def _notarize_binary(self, binary_path: Path, config: dict):
+        """Notarize and staple a macOS binary."""
+        import subprocess
+        import time
+        from rich.console import Console
+
+        console = Console()
+
+        # Create a zip for notarization
+        zip_path = binary_path.parent / f"{binary_path.name}.zip"
+        subprocess.run(["ditto", "-c", "-k", "--keepParent", str(binary_path), str(zip_path)], check=True)
+
+        try:
+            # Submit for notarization
+            cmd = ["xcrun", "notarytool", "submit", str(zip_path),
+                   "--apple-id", config["apple_id"],
+                   "--team-id", config["team_id"]]
+
+            if config["password_method"] == "keychain":
+                cmd.extend(["--keychain-profile", "notary-profile"])
+            else:
+                cmd.extend(["--password", config["password"]])
+
+            cmd.append("--wait")
+
+            console.print("[dim]Submitting to Apple notary service (this may take a few minutes)...[/dim]")
+            result = subprocess.run(cmd, capture_output=True, text=True)
+
+            if result.returncode != 0:
+                console.print(f"[yellow]Notarization submission output:[/yellow]\n{result.stdout}")
+                raise RuntimeError(f"Notarization failed: {result.stderr}")
+
+            # Check if notarization succeeded
+            if "accepted" not in result.stdout.lower():
+                raise RuntimeError(f"Notarization was not accepted:\n{result.stdout}")
+
+            # Staple the ticket
+            console.print("[dim]Stapling notarization ticket...[/dim]")
+            staple_result = subprocess.run(
+                ["xcrun", "stapler", "staple", str(binary_path)],
+                capture_output=True,
+                text=True
+            )
+
+            if staple_result.returncode != 0:
+                console.print(f"[yellow]Warning: Could not staple ticket: {staple_result.stderr}[/yellow]")
+                console.print("[dim]Binary is notarized but ticket is not stapled. Users will need internet on first run.[/dim]")
+
+        finally:
+            # Clean up zip file
+            if zip_path.exists():
+                zip_path.unlink()
