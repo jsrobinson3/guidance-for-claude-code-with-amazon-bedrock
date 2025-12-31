@@ -804,8 +804,8 @@ class MultiProviderAuth:
         server_thread.start()
 
         # Open browser
-        self._debug_print(f"Opening browser for {self.provider_config['name']} authentication...")
-        self._debug_print(f"If browser doesn't open, visit: {auth_url}")
+        print(f"\nOpening browser for {self.provider_config['name']} authentication...", file=sys.stderr)
+        print(f"If browser doesn't open, visit:\n{auth_url}\n", file=sys.stderr)
         webbrowser.open(auth_url)
 
         # Wait for callback

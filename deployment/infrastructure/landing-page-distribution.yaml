@@ -682,11 +682,23 @@ Resources:
                       {''.join(platform_cards)}
 
                       <div class="instructions">
-                          <h4>📋 Installation Instructions</h4>
+                          <h4>📋 Prerequisites</h4>
                           <ul>
-                              <li><strong>Windows:</strong> Extract the ZIP file and run <code>install.bat</code></li>
-                              <li><strong>Linux/Mac:</strong> Extract the ZIP file and run <code>./install.sh</code></li>
-                              <li>After installation, you can use the <code>claude</code> command from your terminal</li>
+                              <li><strong>AWS CLI:</strong> <a href="https://aws.amazon.com/cli/" target="_blank">Install AWS CLI</a></li>
+                              <li><strong>Node.js (v18+):</strong> <a href="https://nodejs.org/" target="_blank">Install Node.js</a></li>
+                              <li><strong>Claude Code:</strong> Run <code>npm install -g @anthropic-ai/claude-code</code></li>
+                          </ul>
+                          <h4 style="margin-top: 16px;">📦 Installation Steps</h4>
+                          <ol>
+                              <li>Download the package for your platform above</li>
+                              <li>Extract the ZIP file to a folder</li>
+                              <li><strong>Windows:</strong> Double-click <code>install.bat</code> or run it in Command Prompt</li>
+                              <li><strong>Linux/Mac:</strong> Open terminal in the folder and run <code>./install.sh</code></li>
+                          </ol>
+                          <h4 style="margin-top: 16px;">✅ Verify Installation</h4>
+                          <ul>
+                              <li>Run <code>aws sts get-caller-identity --profile {profile}</code> to test authentication</li>
+                              <li>Run <code>claude</code> to start using Claude Code with Bedrock</li>
                           </ul>
                       </div>
                   </div>

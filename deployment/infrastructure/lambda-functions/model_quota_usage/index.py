@@ -15,31 +15,64 @@ from widget_utils import parse_widget_context, check_describe_mode, get_time_ran
 from html_utils import generate_error_html, get_status_color
 
 # Quota code mappings for each model
+# Note: Global CRIS models share quota across regions; quota codes may need verification
 QUOTA_MAPPINGS = {
+    # Opus 4.5 (latest)
+    "us.anthropic.claude-opus-4-5-20251101-v1:0": {
+        "name": "Opus 4.5",
+        "tpm_quota_code": "L-BD85BFCD",  # May need verification
+        "rpm_quota_code": "L-7EC72A47",
+        "regions": ["us-east-1", "us-west-2", "us-east-2"]
+    },
+    "global.anthropic.claude-opus-4-5-20251101-v1:0": {
+        "name": "Opus 4.5 (Global)",
+        "tpm_quota_code": "L-BD85BFCD",
+        "rpm_quota_code": "L-7EC72A47",
+        "regions": ["us-east-1", "us-west-2", "eu-central-1", "ap-northeast-1"]
+    },
+    # Opus 4.1
     "us.anthropic.claude-opus-4-1-20250805-v1:0": {
         "name": "Opus 4.1",
         "tpm_quota_code": "L-BD85BFCD",
         "rpm_quota_code": "L-7EC72A47",
         "regions": ["us-east-1", "us-west-2", "us-east-2"]
     },
+    # Opus 4
     "us.anthropic.claude-opus-4-20250514-v1:0": {
         "name": "Opus 4",
-        "tpm_quota_code": "L-29C2B0A3", 
+        "tpm_quota_code": "L-29C2B0A3",
         "rpm_quota_code": "L-C99C7EF6",
         "regions": ["us-east-1", "us-west-2", "us-east-2"]
     },
+    # Sonnet 4.5
+    "global.anthropic.claude-sonnet-4-5-20250929-v1:0": {
+        "name": "Sonnet 4.5 (Global)",
+        "tpm_quota_code": "L-59759B4A",
+        "rpm_quota_code": "L-559DCC33",
+        "regions": ["us-east-1", "us-west-2", "eu-central-1", "ap-northeast-1"]
+    },
+    # Sonnet 4
     "us.anthropic.claude-sonnet-4-20250514-v1:0": {
         "name": "Sonnet 4",
         "tpm_quota_code": "L-59759B4A",
         "rpm_quota_code": "L-559DCC33",
         "regions": ["us-east-1", "us-west-2", "us-east-2"]
     },
+    # Sonnet 3.7
     "us.anthropic.claude-3-7-sonnet-20250219-v1:0": {
         "name": "Sonnet 3.7",
         "tpm_quota_code": "L-6E888CC2",
         "rpm_quota_code": "L-3D8CC480",
         "regions": ["us-east-1", "us-west-2", "us-east-2"]
     },
+    # Haiku 4.5
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0": {
+        "name": "Haiku 4.5",
+        "tpm_quota_code": "L-6E888CC2",  # May need verification
+        "rpm_quota_code": "L-3D8CC480",
+        "regions": ["us-east-1", "us-west-2", "us-east-2"]
+    },
+    # EU region models
     "eu.anthropic.claude-sonnet-4-20250514-v1:0": {
         "name": "Sonnet 4 (EU)",
         "tpm_quota_code": "L-59759B4A",
@@ -52,6 +85,7 @@ QUOTA_MAPPINGS = {
         "rpm_quota_code": "L-3D8CC480",
         "regions": ["eu-west-1", "eu-west-3", "eu-central-1"]
     },
+    # APAC region models
     "apac.anthropic.claude-sonnet-4-20250514-v1:0": {
         "name": "Sonnet 4 (APAC)",
         "tpm_quota_code": "L-59759B4A",

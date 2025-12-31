@@ -752,14 +752,94 @@ Resources:
             model,
             type as token_type,
             SUM(token_usage) as tokens,
-            -- Approximate pricing per million tokens
+            -- Pricing per million tokens (AWS Bedrock pricing as of Dec 31, 2024)
+            -- Source: https://aws.amazon.com/bedrock/pricing/
+            -- Token types: input, output, cacheRead, cacheCreation
+            -- Output ~5x input, Cache read ~10% of input, Cache write (5m) ~125% of input
+            -- Global CRIS (global.anthropic.*) has different pricing than Geo/In-region CRIS
             CASE
-              WHEN model LIKE '%opus-4-1%' THEN 15.00
-              WHEN model LIKE '%opus-4%' THEN 15.00
-              WHEN model LIKE '%sonnet-4%' THEN 3.00
-              WHEN model LIKE '%sonnet-3-7%' THEN 3.00
-              WHEN model LIKE '%haiku-3-5%' THEN 0.25
-              ELSE 3.00
+              -- Global Cross-region Inference pricing
+              -- Opus 4.5 Global
+              WHEN model LIKE 'global.%opus-4-5%' AND type = 'input' THEN 5.00            -- $0.005/1K
+              WHEN model LIKE 'global.%opus-4-5%' AND type = 'output' THEN 25.00          -- $0.025/1K
+              WHEN model LIKE 'global.%opus-4-5%' AND type IN ('cacheRead', 'cache_read') THEN 0.50   -- $0.0005/1K
+              WHEN model LIKE 'global.%opus-4-5%' AND type IN ('cacheCreation', 'cache_creation') THEN 6.25  -- $0.00625/1K
+              -- Haiku 4.5 Global
+              WHEN model LIKE 'global.%haiku-4-5%' AND type = 'input' THEN 1.00           -- $0.001/1K
+              WHEN model LIKE 'global.%haiku-4-5%' AND type = 'output' THEN 5.00          -- $0.005/1K
+              WHEN model LIKE 'global.%haiku-4-5%' AND type IN ('cacheRead', 'cache_read') THEN 0.10   -- $0.0001/1K
+              WHEN model LIKE 'global.%haiku-4-5%' AND type IN ('cacheCreation', 'cache_creation') THEN 1.25  -- $0.00125/1K
+              -- Sonnet 4.5 Global
+              WHEN model LIKE 'global.%sonnet-4-5%' AND type = 'input' THEN 3.00          -- $0.003/1K
+              WHEN model LIKE 'global.%sonnet-4-5%' AND type = 'output' THEN 15.00        -- $0.015/1K
+              WHEN model LIKE 'global.%sonnet-4-5%' AND type IN ('cacheRead', 'cache_read') THEN 0.30   -- $0.0003/1K
+              WHEN model LIKE 'global.%sonnet-4-5%' AND type IN ('cacheCreation', 'cache_creation') THEN 3.75  -- $0.00375/1K
+              -- Sonnet 4 Global
+              WHEN model LIKE 'global.%sonnet-4%' AND type = 'input' THEN 3.00            -- $0.003/1K
+              WHEN model LIKE 'global.%sonnet-4%' AND type = 'output' THEN 15.00          -- $0.015/1K
+              WHEN model LIKE 'global.%sonnet-4%' AND type IN ('cacheRead', 'cache_read') THEN 0.30
+              WHEN model LIKE 'global.%sonnet-4%' AND type IN ('cacheCreation', 'cache_creation') THEN 3.75
+
+              -- Geo and In-region Cross-region Inference pricing
+              -- Opus 4.5
+              WHEN model LIKE '%opus-4-5%' AND type = 'input' THEN 5.50                   -- $0.0055/1K
+              WHEN model LIKE '%opus-4-5%' AND type = 'output' THEN 27.50                 -- $0.0275/1K
+              WHEN model LIKE '%opus-4-5%' AND type IN ('cacheRead', 'cache_read') THEN 0.55    -- $0.00055/1K
+              WHEN model LIKE '%opus-4-5%' AND type IN ('cacheCreation', 'cache_creation') THEN 6.875  -- $0.006875/1K
+              -- Opus 4.1
+              WHEN model LIKE '%opus-4-1%' AND type = 'input' THEN 15.00                  -- $0.015/1K
+              WHEN model LIKE '%opus-4-1%' AND type = 'output' THEN 75.00                 -- $0.075/1K
+              WHEN model LIKE '%opus-4-1%' AND type IN ('cacheRead', 'cache_read') THEN 1.50    -- $0.0015/1K
+              WHEN model LIKE '%opus-4-1%' AND type IN ('cacheCreation', 'cache_creation') THEN 18.75  -- $0.01875/1K
+              -- Opus 4
+              WHEN model LIKE '%opus-4%' AND type = 'input' THEN 15.00                    -- $0.015/1K
+              WHEN model LIKE '%opus-4%' AND type = 'output' THEN 75.00                   -- $0.075/1K
+              WHEN model LIKE '%opus-4%' AND type IN ('cacheRead', 'cache_read') THEN 1.50
+              WHEN model LIKE '%opus-4%' AND type IN ('cacheCreation', 'cache_creation') THEN 18.75
+              -- Opus 3
+              WHEN model LIKE '%opus-3%' AND type = 'input' THEN 15.00                    -- $0.015/1K
+              WHEN model LIKE '%opus-3%' AND type = 'output' THEN 75.00                   -- $0.075/1K
+              -- Sonnet 4.5
+              WHEN model LIKE '%sonnet-4-5%' AND type = 'input' THEN 3.30                 -- $0.0033/1K
+              WHEN model LIKE '%sonnet-4-5%' AND type = 'output' THEN 16.50               -- $0.0165/1K
+              WHEN model LIKE '%sonnet-4-5%' AND type IN ('cacheRead', 'cache_read') THEN 0.33   -- $0.00033/1K
+              WHEN model LIKE '%sonnet-4-5%' AND type IN ('cacheCreation', 'cache_creation') THEN 4.125  -- $0.004125/1K
+              -- Sonnet 4
+              WHEN model LIKE '%sonnet-4%' AND type = 'input' THEN 3.00                   -- $0.003/1K
+              WHEN model LIKE '%sonnet-4%' AND type = 'output' THEN 15.00                 -- $0.015/1K
+              WHEN model LIKE '%sonnet-4%' AND type IN ('cacheRead', 'cache_read') THEN 0.30
+              WHEN model LIKE '%sonnet-4%' AND type IN ('cacheCreation', 'cache_creation') THEN 3.75
+              -- Sonnet 3.7
+              WHEN model LIKE '%sonnet-3-7%' AND type = 'input' THEN 3.00                 -- $0.003/1K
+              WHEN model LIKE '%sonnet-3-7%' AND type = 'output' THEN 15.00               -- $0.015/1K
+              WHEN model LIKE '%sonnet-3-7%' AND type IN ('cacheRead', 'cache_read') THEN 0.30
+              WHEN model LIKE '%sonnet-3-7%' AND type IN ('cacheCreation', 'cache_creation') THEN 3.75
+              -- Sonnet 3.5
+              WHEN model LIKE '%sonnet-3-5%' AND type = 'input' THEN 3.00                 -- $0.003/1K
+              WHEN model LIKE '%sonnet-3-5%' AND type = 'output' THEN 15.00               -- $0.015/1K
+              -- Haiku 4.5
+              WHEN model LIKE '%haiku-4-5%' AND type = 'input' THEN 1.10                  -- $0.0011/1K
+              WHEN model LIKE '%haiku-4-5%' AND type = 'output' THEN 5.50                 -- $0.0055/1K
+              WHEN model LIKE '%haiku-4-5%' AND type IN ('cacheRead', 'cache_read') THEN 0.11    -- $0.00011/1K
+              WHEN model LIKE '%haiku-4-5%' AND type IN ('cacheCreation', 'cache_creation') THEN 1.375  -- $0.001375/1K
+              -- Haiku 3.5
+              WHEN model LIKE '%haiku-3-5%' AND type = 'input' THEN 0.80                  -- $0.0008/1K
+              WHEN model LIKE '%haiku-3-5%' AND type = 'output' THEN 4.00                 -- $0.004/1K
+              WHEN model LIKE '%haiku-3-5%' AND type IN ('cacheRead', 'cache_read') THEN 0.08    -- $0.00008/1K
+              WHEN model LIKE '%haiku-3-5%' AND type IN ('cacheCreation', 'cache_creation') THEN 1.00  -- $0.001/1K
+              -- Haiku 3
+              WHEN model LIKE '%haiku-3%' AND type = 'input' THEN 0.25                    -- $0.00025/1K
+              WHEN model LIKE '%haiku-3%' AND type = 'output' THEN 1.25                   -- $0.00125/1K
+              -- Default Haiku fallback
+              WHEN model LIKE '%haiku%' AND type = 'input' THEN 0.80
+              WHEN model LIKE '%haiku%' AND type = 'output' THEN 4.00
+              WHEN model LIKE '%haiku%' AND type IN ('cacheRead', 'cache_read') THEN 0.08
+              WHEN model LIKE '%haiku%' AND type IN ('cacheCreation', 'cache_creation') THEN 1.00
+              -- Default fallbacks by token type
+              WHEN type = 'output' THEN 15.00
+              WHEN type IN ('cacheRead', 'cache_read') THEN 0.30
+              WHEN type IN ('cacheCreation', 'cache_creation') THEN 3.75
+              ELSE 3.00                                                                   -- Default input
             END as price_per_million
           FROM "${GlueDatabase}".metrics
           WHERE year = CAST(YEAR(CURRENT_DATE) AS VARCHAR)
