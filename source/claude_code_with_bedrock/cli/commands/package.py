@@ -346,7 +346,7 @@ class PackageCommand(Command):
 
         # Create documentation
         console.print("[cyan]Creating documentation...[/cyan]")
-        self._create_documentation(output_dir, profile, timestamp)
+        self._create_documentation(output_dir, profile, timestamp, profile_name)
 
         # Always create Claude Code settings (required for Bedrock configuration)
         console.print("[cyan]Creating Claude Code settings...[/cyan]")
@@ -2093,7 +2093,7 @@ pause
         # Note: chmod not needed on Windows batch files
         return installer_path
 
-    def _create_documentation(self, output_dir: Path, profile, timestamp: str):
+    def _create_documentation(self, output_dir: Path, profile, timestamp: str, profile_name: str):
         """Create user documentation."""
         readme_content = f"""# Claude Code Authentication Setup
 
@@ -2114,7 +2114,7 @@ pause
 
 3. Use the AWS profile:
    ```bash
-   export AWS_PROFILE=ClaudeCode
+   export AWS_PROFILE={profile_name}
    aws sts get-caller-identity
    ```
 
@@ -2162,13 +2162,13 @@ install.bat
 The installer will:
 - Check for AWS CLI installation
 - Copy authentication tools to `%USERPROFILE%\\claude-code-with-bedrock`
-- Configure the AWS profile "ClaudeCode"
+- Configure the AWS profile "{profile_name}"
 - Test the authentication
 
 #### Step 4: Use Claude Code
 ```cmd
 # Set the AWS profile
-set AWS_PROFILE=ClaudeCode
+set AWS_PROFILE={profile_name}
 
 # Verify authentication works
 aws sts get-caller-identity
@@ -2178,7 +2178,7 @@ aws sts get-caller-identity
 
 For PowerShell users:
 ```powershell
-$env:AWS_PROFILE = "ClaudeCode"
+$env:AWS_PROFILE = "{profile_name}"
 aws sts get-caller-identity
 ```
 
