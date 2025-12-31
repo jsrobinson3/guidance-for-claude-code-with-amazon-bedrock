@@ -281,6 +281,9 @@ class DeployCommand(Command):
         with Progress(
             SpinnerColumn(), TextColumn("[progress.description]{task.description}"), console=console
         ) as progress:
+            # Get resource tags from profile (with defaults for common mandatory tags)
+            resource_tags = getattr(profile, "resource_tags", {}) or {}
+
             # Common deployment function
             def deploy_with_cf(
                 template_path, stack_name, params, capabilities=None, task_description="Deploying stack..."
@@ -292,12 +295,13 @@ class DeployCommand(Command):
                     # Convert parameters to boto3 format
                     boto3_params = self._convert_params_to_boto3(params) if params else None
 
-                    # Deploy stack
+                    # Deploy stack with resource tags
                     result = cf_manager.deploy_stack(
                         stack_name=stack_name,
                         template_path=template_path,
                         parameters=boto3_params,
                         capabilities=capabilities or ["CAPABILITY_IAM"],
+                        tags=resource_tags if resource_tags else None,
                         on_event=lambda e: progress.update(
                             task,
                             description=f"{e.get('LogicalResourceId', 'Stack')} - {e.get('ResourceStatus', '')}"
@@ -442,26 +446,35 @@ class DeployCommand(Command):
                 if profile.distribution_type == "landing-page":
                     template = project_root / "deployment" / "infrastructure" / "landing-page-distribution.yaml"
 
-                    # Get VPC outputs from networking stack
-                    networking_stack_name = profile.stack_names.get(
-                        "networking", f"{profile.identity_pool_name}-networking"
-                    )
-                    networking_outputs = get_stack_outputs(networking_stack_name, profile.aws_region)
+                    # Get VPC configuration - check if using existing VPC or networking stack
+                    monitoring_config = profile.monitoring_config or {}
+                    vpc_config = monitoring_config.get("vpc_config", {})
 
-                    if not networking_outputs:
-                        console.print(
-                            "[red]Error: Networking stack outputs not found. Deploy networking stack first.[/red]"
+                    if not vpc_config.get("create_vpc", True):
+                        # Using existing VPC from profile config
+                        vpc_id = vpc_config.get("vpc_id", "")
+                        subnet_ids = ",".join(vpc_config.get("subnet_ids", []))
+                        console.print(f"[dim]Using existing VPC: {vpc_id}[/dim]")
+                    else:
+                        # Get VPC outputs from networking stack
+                        networking_stack_name = profile.stack_names.get(
+                            "networking", f"{profile.identity_pool_name}-networking"
                         )
-                        return 1
+                        networking_outputs = get_stack_outputs(networking_stack_name, profile.aws_region)
 
-                    vpc_id = networking_outputs.get("VpcId", "")
-                    # Networking stack only has public subnets (SubnetIds), use for both ALB and Lambda
-                    subnet_ids = networking_outputs.get("SubnetIds", "")
+                        if not networking_outputs:
+                            console.print(
+                                "[red]Error: Networking stack outputs not found. Deploy networking stack first.[/red]"
+                            )
+                            return 1
+
+                        vpc_id = networking_outputs.get("VpcId", "")
+                        # Networking stack only has public subnets (SubnetIds), use for both ALB and Lambda
+                        subnet_ids = networking_outputs.get("SubnetIds", "")
 
                     if not vpc_id or not subnet_ids:
-                        console.print("[red]Error: Missing required VPC/subnet outputs from networking stack.[/red]")
-                        console.print("[yellow]Expected: VpcId, SubnetIds[/yellow]")
-                        console.print(f"[yellow]Got: {list(networking_outputs.keys())}[/yellow]")
+                        console.print("[red]Error: Missing required VPC/subnet configuration.[/red]")
+                        console.print("[yellow]Either configure an existing VPC or deploy the networking stack.[/yellow]")
                         return 1
 
                     # Use same subnets for both public (ALB) and private (Lambda)
@@ -711,17 +724,17 @@ class DeployCommand(Command):
                     console.print("Run: [cyan]ccwb deploy dashboard[/cyan]")
                     return 1
 
-                # Get S3 bucket from networking stack for packaging
-                networking_stack = profile.stack_names.get("networking", f"{profile.identity_pool_name}-networking")
-                networking_outputs = get_stack_outputs(networking_stack, profile.aws_region)
+                # Get S3 bucket from s3bucket stack for packaging
+                s3bucket_stack = profile.stack_names.get("s3bucket", f"{profile.identity_pool_name}-s3bucket")
+                s3bucket_outputs = get_stack_outputs(s3bucket_stack, profile.aws_region)
 
-                if not networking_outputs or not networking_outputs.get("CfnArtifactsBucket"):
-                    console.print(f"[red]Could not get S3 bucket from networking stack {networking_stack}[/red]")
-                    console.print("[yellow]The networking stack must be deployed first.[/yellow]")
-                    console.print("Run: [cyan]ccwb deploy networking[/cyan]")
+                if not s3bucket_outputs or not s3bucket_outputs.get("CfnArtifactsBucket"):
+                    console.print(f"[red]Could not get S3 bucket from s3bucket stack {s3bucket_stack}[/red]")
+                    console.print("[yellow]The s3bucket stack must be deployed first.[/yellow]")
+                    console.print("Run: [cyan]ccwb deploy s3bucket[/cyan]")
                     return 1
 
-                s3_bucket = networking_outputs["CfnArtifactsBucket"]
+                s3_bucket = s3bucket_outputs["CfnArtifactsBucket"]
 
                 # Build parameters
                 monthly_limit = getattr(profile, "monthly_token_limit", 225000000)

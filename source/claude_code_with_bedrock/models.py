@@ -20,6 +20,47 @@ DEFAULT_REGIONS = {"us": "us-east-1", "europe": "eu-west-3", "apac": "ap-northea
 # Claude model configurations
 # Each model defines its availability across different cross-region profiles
 CLAUDE_MODELS = {
+    "opus-4-5": {
+        "name": "Claude Opus 4.5",
+        "base_model_id": "anthropic.claude-opus-4-5-20251101-v1:0",
+        "profiles": {
+            "us": {
+                "model_id": "us.anthropic.claude-opus-4-5-20251101-v1:0",
+                "description": "US regions only",
+                "source_regions": ["us-west-2", "us-east-2", "us-east-1"],
+                "destination_regions": ["us-east-1", "us-east-2", "us-west-2"],
+            },
+            "global": {
+                "model_id": "global.anthropic.claude-opus-4-5-20251101-v1:0",
+                "description": "Global routing across all AWS regions",
+                "source_regions": [
+                    # North America
+                    "us-east-1",
+                    "us-east-2",
+                    "us-west-2",
+                    # Europe
+                    "eu-central-1",
+                    "eu-west-1",
+                    "eu-west-3",
+                    # Asia Pacific
+                    "ap-northeast-1",
+                    "ap-southeast-1",
+                    "ap-southeast-2",
+                ],
+                "destination_regions": [
+                    "us-east-1",
+                    "us-east-2",
+                    "us-west-2",
+                    "eu-central-1",
+                    "eu-west-1",
+                    "eu-west-3",
+                    "ap-northeast-1",
+                    "ap-southeast-1",
+                    "ap-southeast-2",
+                ],
+            },
+        },
+    },
     "opus-4-1": {
         "name": "Claude Opus 4.1",
         "base_model_id": "anthropic.claude-opus-4-1-20250805-v1:0",

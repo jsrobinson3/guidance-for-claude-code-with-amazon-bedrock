@@ -1019,6 +1019,66 @@ class InitCommand(Command):
         elif distribution_type == "presigned-s3":
             console.print("[green]✓[/green] Presigned S3 distribution will be deployed")
 
+        # Resource Tags Configuration
+        console.print("\n[bold]AWS Resource Tags[/bold]")
+        console.print("Tags are applied to all AWS resources for cost tracking and compliance.")
+
+        # Check for existing tags
+        existing_tags = config.get("tags", {})
+        if existing_tags:
+            console.print(f"[dim]Current tags: {len(existing_tags)} configured[/dim]")
+
+        configure_tags = questionary.confirm(
+            "Configure resource tags?",
+            default=bool(existing_tags),
+        ).ask()
+
+        if configure_tags:
+            if "tags" not in config:
+                config["tags"] = {}
+
+            # Default mandatory tags that organizations commonly require
+            default_tags = {
+                "costCategory": "claude-code-for-bedrock",
+                "environment": "production",
+                "dataClass": "restricted",
+                "DrataExclude": "For internal use and development",
+            }
+
+            console.print("\n[dim]Common mandatory tags (leave empty to skip):[/dim]")
+
+            for tag_key, default_value in default_tags.items():
+                saved_value = existing_tags.get(tag_key, default_value)
+                value = questionary.text(
+                    f"  {tag_key}:",
+                    default=saved_value,
+                ).ask()
+                if value and value.strip():
+                    config["tags"][tag_key] = value.strip()
+
+            # Allow custom tags
+            add_custom = questionary.confirm("Add custom tags?", default=False).ask()
+            if add_custom:
+                console.print("[dim]Enter tags in key=value format, one per line. Empty line to finish.[/dim]")
+                while True:
+                    custom_tag = questionary.text("  Tag (key=value):").ask()
+                    if not custom_tag or not custom_tag.strip():
+                        break
+                    if "=" in custom_tag:
+                        key, value = custom_tag.split("=", 1)
+                        config["tags"][key.strip()] = value.strip()
+                        console.print(f"    [green]✓[/green] Added: {key.strip()}")
+                    else:
+                        console.print(f"    [yellow]Invalid format. Use key=value[/yellow]")
+
+            tag_count = len(config.get("tags", {}))
+            if tag_count > 0:
+                console.print(f"[green]✓[/green] {tag_count} resource tag(s) configured")
+        else:
+            # Keep existing tags if not configuring
+            if "tags" not in config:
+                config["tags"] = {}
+
         # Bedrock model and cross-region configuration
         if not skip_bedrock:
             console.print("\n[bold blue]Step 3: Bedrock Model Selection[/bold blue]")
@@ -1335,6 +1395,9 @@ class InitCommand(Command):
         # Save configuration first
         self._save_configuration(config, profile_name)
 
+        # Get resource tags from config
+        resource_tags = config.get("tags", {})
+
         # Create a progress display
         console.print("\n[bold]Deploying infrastructure...[/bold]")
 
@@ -1361,7 +1424,7 @@ class InitCommand(Command):
                     / "cognito-identity-pool.yaml"
                 )
 
-                if self._deploy_stack(stack_name, template_file, params_file, config["aws"]["region"]):
+                if self._deploy_stack(stack_name, template_file, params_file, config["aws"]["region"], resource_tags):
                     console.print("  [green]✓[/green] Authentication stack deployed")
                 else:
                     console.print("  [red]✗[/red] Authentication stack deployment failed")
@@ -1383,7 +1446,9 @@ class InitCommand(Command):
                         / "otel-collector.yaml"
                     )
 
-                    if self._deploy_stack(collector_stack, collector_template, params_file, config["aws"]["region"]):
+                    if self._deploy_stack(
+                        collector_stack, collector_template, params_file, config["aws"]["region"], resource_tags
+                    ):
                         console.print("  [green]✓[/green] Monitoring collector deployed")
                     else:
                         console.print("  [yellow]![/yellow] Monitoring deployment skipped or failed")
@@ -1397,7 +1462,9 @@ class InitCommand(Command):
                         / "monitoring-dashboard.yaml"
                     )
 
-                    if self._deploy_stack(dashboard_stack, dashboard_template, params_file, config["aws"]["region"]):
+                    if self._deploy_stack(
+                        dashboard_stack, dashboard_template, params_file, config["aws"]["region"], resource_tags
+                    ):
                         console.print("  [green]✓[/green] Monitoring dashboard deployed")
                     else:
                         console.print("  [yellow]![/yellow] Dashboard deployment skipped or failed")
@@ -1485,6 +1552,7 @@ class InitCommand(Command):
             daily_enforcement_mode=config_data.get("quota", {}).get("daily_enforcement_mode", "alert"),
             monthly_enforcement_mode=config_data.get("quota", {}).get("monthly_enforcement_mode", "block"),
             quota_check_interval=config_data.get("quota", {}).get("check_interval", 30),
+            resource_tags=config_data.get("tags", {}),
         )
 
         config.add_profile(profile)
@@ -1595,8 +1663,18 @@ class InitCommand(Command):
         with open(params_file, "w") as f:
             json.dump(params, f, indent=2)
 
-    def _deploy_stack(self, stack_name: str, template_file: Path, params_file: Path, region: str) -> bool:
-        """Deploy a CloudFormation stack."""
+    def _deploy_stack(
+        self, stack_name: str, template_file: Path, params_file: Path, region: str, tags: dict[str, str] = None
+    ) -> bool:
+        """Deploy a CloudFormation stack.
+
+        Args:
+            stack_name: Name of the CloudFormation stack
+            template_file: Path to the CloudFormation template
+            params_file: Path to the parameters file
+            region: AWS region
+            tags: Optional dictionary of tags to apply to the stack
+        """
         try:
             console = Console()
 
@@ -1623,6 +1701,12 @@ class InitCommand(Command):
                 region,
                 "--no-fail-on-empty-changeset",
             ]
+
+            # Add tags if provided
+            if tags:
+                cmd.append("--tags")
+                for key, value in tags.items():
+                    cmd.append(f"{key}={value}")
 
             # Show command in verbose mode
             if self.io.is_verbose():
@@ -1791,6 +1875,10 @@ class InitCommand(Command):
             # Add selected source region if present
             if hasattr(profile, "selected_source_region") and profile.selected_source_region:
                 existing_config["aws"]["selected_source_region"] = profile.selected_source_region
+
+            # Add resource tags if present
+            if hasattr(profile, "resource_tags") and profile.resource_tags:
+                existing_config["tags"] = profile.resource_tags
 
             return existing_config
 

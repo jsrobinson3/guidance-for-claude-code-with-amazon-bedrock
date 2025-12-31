@@ -899,27 +899,18 @@ class PackageCommand(Command):
             shutil.copytree(source_dir / "credential_provider", temp_path / "credential_provider")
 
             # Create Dockerfile with PyInstaller
-            dockerfile_content = f"""FROM --platform={docker_platform} ubuntu:22.04
+            # Use official Python image to avoid QEMU emulation issues with deadsnakes PPA
+            dockerfile_content = f"""FROM --platform={docker_platform} python:3.12-slim-bookworm
 
 # Set non-interactive to avoid tzdata prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# Install Python 3.12 and build dependencies
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
+# Install build dependencies only (Python already included in base image)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     binutils \
-    curl \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y python3.12 python3.12-dev python3.12-venv \
-    && python3.12 -m ensurepip \
-    && python3.12 -m pip install --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
-
-# Set Python 3.12 as default python3
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 
 # Install Python packages
 RUN python3 -m pip install --no-cache-dir \
@@ -1092,27 +1083,18 @@ RUN pyinstaller \
             shutil.copytree(source_dir / "otel_helper", temp_path / "otel_helper")
 
             # Create Dockerfile for OTEL helper with PyInstaller
-            dockerfile_content = f"""FROM --platform={docker_platform} ubuntu:22.04
+            # Use official Python image to avoid QEMU emulation issues with deadsnakes PPA
+            dockerfile_content = f"""FROM --platform={docker_platform} python:3.12-slim-bookworm
 
 # Set non-interactive to avoid tzdata prompts
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# Install Python 3.12 and build dependencies
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
+# Install build dependencies only (Python already included in base image)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     binutils \
-    curl \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y python3.12 python3.12-dev python3.12-venv \
-    && python3.12 -m ensurepip \
-    && python3.12 -m pip install --upgrade pip \
     && rm -rf /var/lib/apt/lists/*
-
-# Set Python 3.12 as default python3
-RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
 
 # Install Python packages
 RUN python3 -m pip install --no-cache-dir \
@@ -2315,10 +2297,10 @@ Available metrics include:
 
                 # Determine and set small/fast model based on selected model family
                 if "opus" in profile.selected_model:
-                    # For Opus, use Haiku as small/fast model
+                    # For Opus, use Haiku 4.5 as small/fast model
                     model_id = profile.selected_model
                     prefix = model_id.split(".anthropic")[0]  # Get us/eu/apac prefix
-                    settings["env"]["ANTHROPIC_SMALL_FAST_MODEL"] = f"{prefix}.anthropic.claude-3-5-haiku-20241022-v1:0"
+                    settings["env"]["ANTHROPIC_SMALL_FAST_MODEL"] = f"{prefix}.anthropic.claude-haiku-4-5-20251001-v1:0"
                 else:
                     # For other models, use same model as small/fast (or could use Haiku)
                     settings["env"]["ANTHROPIC_SMALL_FAST_MODEL"] = profile.selected_model

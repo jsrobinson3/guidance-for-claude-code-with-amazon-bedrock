@@ -539,13 +539,25 @@ class DistributeCommand(Command):
             console.print("Run: [cyan]poetry run ccwb package[/cyan] first")
             return 1
 
-        # Create all-platforms package (includes everything)
-        all_files = []
-        for files in platform_files.values():
-            all_files.extend(files)
-        # Deduplicate
-        all_files = list(set(all_files))
-        available_platforms["all-platforms"] = all_files
+        # Only create all-platforms package if ALL platforms are available
+        # This prevents partial uploads from creating incomplete all-platforms packages
+        all_required_platforms = set(platform_files.keys())  # windows, linux, mac
+        available_platform_names = set(available_platforms.keys())
+
+        if all_required_platforms == available_platform_names:
+            # All platforms available - create comprehensive all-platforms package
+            all_files = []
+            for files in platform_files.values():
+                all_files.extend(files)
+            # Deduplicate
+            all_files = list(set(all_files))
+            available_platforms["all-platforms"] = all_files
+            console.print("  ✓ All-platforms package will be created (all platforms present)")
+        else:
+            # Partial build - don't create/update all-platforms to preserve existing
+            missing = all_required_platforms - available_platform_names
+            console.print(f"  [dim]Skipping all-platforms package (missing: {', '.join(missing)})[/dim]")
+            console.print("  [dim]Existing all-platforms package in S3 will be preserved[/dim]")
 
         # Create temp directory for package ZIPs
         temp_dir = Path(tempfile.mkdtemp())
@@ -565,13 +577,13 @@ class DistributeCommand(Command):
         )
         release_datetime = f"{release_date} {release_time}"
 
-        # Clean up old packages in S3 to prevent stale platform packages from appearing
+        # Create S3 client
         s3 = boto3.client("s3", region_name=profile.aws_region)
-        console.print("\n[dim]Cleaning up old packages from S3...[/dim]")
 
-        # Delete all existing packages/*/latest.zip files
-        platforms_to_clean = ["windows", "linux", "mac", "all-platforms"]
-        for platform in platforms_to_clean:
+        # Only clean up packages for platforms we're actually uploading
+        # This preserves other OS builds that may have been uploaded separately
+        console.print("\n[dim]Cleaning up packages being replaced...[/dim]")
+        for platform in available_platforms.keys():
             s3_key = f"packages/{platform}/latest.zip"
             try:
                 s3.delete_object(Bucket=bucket_name, Key=s3_key)

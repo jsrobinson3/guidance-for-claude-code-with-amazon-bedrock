@@ -73,6 +73,9 @@ class Profile:
     # Claude Code settings configuration
     include_coauthored_by: bool = True  # Whether to include "co-authored-by Claude" in git commits
 
+    # Resource tagging configuration
+    resource_tags: dict[str, str] = field(default_factory=dict)  # Custom tags to apply to all AWS resources
+
     # Legacy field support
     @property
     def okta_domain(self) -> str:
