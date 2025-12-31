@@ -806,7 +806,11 @@ class MultiProviderAuth:
         # Open browser
         print(f"\nOpening browser for {self.provider_config['name']} authentication...", file=sys.stderr)
         print(f"If browser doesn't open, visit:\n{auth_url}\n", file=sys.stderr)
-        webbrowser.open(auth_url)
+        try:
+            webbrowser.open(auth_url)
+        except Exception:
+            # Silently handle browser open failures (common in WSL, SSH sessions)
+            pass
 
         # Wait for callback
         server_thread.join(timeout=300)  # 5 minute timeout

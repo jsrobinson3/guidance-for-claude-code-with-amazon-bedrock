@@ -2223,6 +2223,34 @@ This will force re-authentication on your next AWS command.
 ### Browser doesn't open
 Check that you're not in an SSH session. The browser needs to open on your local machine.
 
+### Using WSL (Windows Subsystem for Linux)
+
+**Option 1: Manual URL Copy/Paste (Works on all WSL2 versions)**
+
+1. When you run an AWS command, you'll see an authentication URL printed in the terminal
+2. Copy the entire URL (starts with `https://login.microsoftonline.com/...` or your provider domain)
+3. Paste it into your Windows browser (Chrome, Edge, Firefox, etc.)
+4. Complete authentication in the browser
+5. The callback will automatically work - WSL2 forwards localhost:8400 from Windows to WSL
+
+**Option 2: Install Chrome in WSL2 with GUI Support (Seamless browser auto-open)**
+
+If you're using Windows 11 or Windows 10 with WSLg support, you can install Chrome directly in WSL2:
+
+```bash
+# Install Chrome
+wget https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+sudo apt install ./google-chrome-stable_current_amd64.deb
+
+# Set Chrome as default browser
+export BROWSER=google-chrome
+echo 'export BROWSER=google-chrome' >> ~/.bashrc
+```
+
+After this, authentication will automatically open Chrome in a native Linux window on your Windows desktop.
+
+**Important**: WSL2 (Windows 10 build 18945+ or Windows 11) is required for automatic localhost forwarding. If you're using WSL1, you may need to upgrade to WSL2. Check your WSL version with `wsl --status` in PowerShell.
+
 ## Support
 
 Contact your IT administrator for help.
